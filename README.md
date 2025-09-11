@@ -1,171 +1,200 @@
+# Cast.ai Batch Rebalancing Script
 
-# Cast AI Batch Rebalancing Script - Quick Start Guide
+A bash script for performing batch node rebalancing operations on Cast.ai managed Kubernetes clusters. This script allows you to rebalance nodes in controlled batches rather than all at once, providing better control over cluster operations and reducing potential disruption.
+
+## Features
+
+- **Batch Processing**: Rebalance nodes in configurable batch sizes
+- **Zone Filtering**: Optional filtering by availability zone
+- **Progress Monitoring**: Real-time status monitoring with timeout protection
+- **Error Handling**: Robust error checking and status reporting
+- **Safe Execution**: Maintains minimum node requirements during rebalancing
 
 ## Prerequisites
 
-- `curl` and `jq` installed on your system
-- Cast AI API key
-- Either cluster name or cluster ID
-- Target availability zone
+- **bash** shell environment
+- **curl** - For API requests
+- **jq** - For JSON processing
+- Valid Cast.ai API key with cluster management permissions
+- Access to the target Kubernetes cluster
 
-## Quick Start
+## Installation
 
-### 1. Basic Usage (Interactive)
+1. Download the script:
+   ```bash
+   wget https://path-to-script/rebalance.sh
+   chmod +x rebalance.sh
+   ```
+
+2. Install dependencies (if not already available):
+   ```bash
+   # On Ubuntu/Debian
+   sudo apt-get install curl jq
+   
+   # On macOS
+   brew install curl jq
+   
+   # On RHEL/CentOS
+   sudo yum install curl jq
+   ```
+
+## Usage
+
+### Basic Usage
 ```bash
-# The script will prompt for API key
-./rebalance-script.sh --cluster-name my-cluster --zone us-east-1a
+./rebalance.sh <cluster_id> <api_key> <batch_size>
 ```
 
-### 2. Non-Interactive (Recommended for CI/CD)
+### With Zone Filtering
 ```bash
-# Using environment variables
-export CAST_AI_API_KEY="your-api-key-here"
-export CAST_AI_CLUSTER_ID="abc123-def456"  # or use CAST_AI_CLUSTER_NAME
-export CAST_AI_ZONE="us-east-1a"
-./rebalance-script.sh
+./rebalance.sh <cluster_id> <api_key> <batch_size> <zone>
 ```
 
-### 3. Command Line Options
+### Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `cluster_id` | Yes | Cast.ai cluster identifier |
+| `api_key` | Yes | Cast.ai API key with cluster permissions |
+| `batch_size` | Yes | Number of nodes to process per batch |
+| `zone` | No | Filter nodes by specific availability zone |
+
+### Examples
+
 ```bash
-./rebalance-script.sh \
-  --cluster-id abc123-def456 \
-  --zone us-east-1a \
-  --api-key your-api-key \
-  --batch-size 5 \
-  --min-nodes 3
+# Rebalance all nodes in batches of 5
+./rebalance.sh abc123-def456 "your-api-key-here" 5
+
+# Rebalance nodes in us-west-2a zone, batches of 3
+./rebalance.sh abc123-def456 "your-api-key-here" 3 us-west-2a
+
+# Small batches for production (recommended)
+./rebalance.sh abc123-def456 "your-api-key-here" 2
 ```
 
-## Common Scenarios
+## How It Works
 
-### Test Run (Dry Run)
+1. **Node Discovery**: Fetches all nodes in the cluster (optionally filtered by zone)
+2. **Batch Creation**: Divides nodes into batches of specified size
+3. **Plan Generation**: Creates a rebalancing plan for each batch with minimum node requirements
+4. **Execution**: Executes the plan and monitors progress
+5. **Monitoring**: Waits for completion with 40-minute timeout per batch
+6. **Iteration**: Processes next batch with 30-second delay between batches
+
+## Output Example
+
+```
+Starting batch rebalancing...
+Cluster ID: abc123-def456
+Batch Size: 3
+Fetching nodes...
+Found 12 nodes
+
+=== Processing Batch 1 ===
+Processing nodes 1 to 3
+Creating rebalancing plan...
+Plan created: plan-789xyz
+Executing plan...
+Plan execution started
+Waiting for completion...
+Status: running (30s elapsed)
+Status: running (60s elapsed)
+Batch 1 completed successfully!
+
+=== Processing Batch 2 ===
+...
+```
+
+## Configuration
+
+### Timeouts and Delays
+
+The script includes several timing configurations:
+
+- **Plan Execution Delay**: 10 seconds before executing each plan
+- **Status Check Interval**: 30 seconds between status checks
+- **Batch Timeout**: 40 minutes (2400 seconds) per batch
+- **Inter-batch Delay**: 30 seconds between batches
+
+### Minimum Nodes
+
+The script enforces a minimum of 3 nodes during rebalancing to maintain cluster stability. This can be modified in the script if needed:
+
 ```bash
-./rebalance-script.sh --cluster-name my-cluster --zone us-east-1a --dry-run
+# Line in script:
+"minNodes": 3
 ```
 
-### CI/CD Pipeline
-```bash
-# Set in your CI/CD environment variables:
-CAST_AI_API_KEY=<secret>
-CAST_AI_CLUSTER_ID=<cluster-id>
-CAST_AI_ZONE=<target-zone>
+## Error Handling
 
-# Run the script
-./rebalance-script.sh --verbose
-```
+The script handles various error conditions:
 
-### Custom Configuration
-```bash
-./rebalance-script.sh \
-  --cluster-name production-cluster \
-  --zone eu-west-1b \
-  --batch-size 10 \
-  --min-nodes 5 \
-  --timeout 90 \
-  --verbose
-```
+- **No nodes found**: Exits if no nodes are discovered
+- **Plan creation failure**: Reports failed plan creation with API response
+- **Execution timeout**: Reports timeout after 40 minutes per batch
+- **API errors**: Displays raw API responses for debugging
 
-## Environment Variables
+## Security Considerations
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `CAST_AI_API_KEY` | Your Cast AI API key | `sk-cast-ai-...` |
-| `CAST_AI_CLUSTER_ID` | Direct cluster ID (faster) | `abc123-def456` |
-| `CAST_AI_CLUSTER_NAME` | Cluster name (requires lookup) | `my-production-cluster` |
-| `CAST_AI_ZONE` | Target availability zone | `us-east-1a` |
-| `CAST_AI_BATCH_SIZE` | Nodes per batch (default: 3) | `5` |
-| `CAST_AI_MIN_NODES` | Minimum nodes to maintain (default: 3) | `2` |
-| `CAST_AI_TIMEOUT_MINUTES` | Timeout in minutes (default: 60) | `90` |
-| `CAST_AI_DRY_RUN` | Set to 'true' for dry run | `true` |
-| `CAST_AI_VERBOSE` | Set to 'true' for detailed logs | `true` |
-
-## Command Line Options
-
-| Option | Description |
-|--------|-------------|
-| `--cluster-name, -c` | Cast AI cluster name |
-| `--cluster-id, -i` | Direct cluster ID (skips name lookup) |
-| `--zone, -z` | Availability zone to rebalance |
-| `--batch-size, -b` | Number of nodes per batch |
-| `--min-nodes, -m` | Minimum nodes to maintain |
-| `--api-key, -k` | Cast AI API key |
-| `--dry-run, -d` | Test mode - shows what would happen |
-| `--verbose, -v` | Enable detailed logging |
-| `--help, -h` | Show help message |
-
-## CI/CD Examples
-
-### GitHub Actions
-```yaml
-- name: Rebalance Cast AI Cluster
-  env:
-    CAST_AI_API_KEY: ${{ secrets.CAST_AI_API_KEY }}
-    CAST_AI_CLUSTER_ID: ${{ vars.CLUSTER_ID }}
-    CAST_AI_ZONE: ${{ vars.TARGET_ZONE }}
-  run: ./rebalance-script.sh --verbose
-```
-
-### Jenkins
-```groovy
-environment {
-    CAST_AI_API_KEY = credentials('cast-ai-api-key')
-    CAST_AI_CLUSTER_ID = "${params.CLUSTER_ID}"
-    CAST_AI_ZONE = "${params.ZONE}"
-}
-steps {
-    sh './rebalance-script.sh --batch-size 5'
-}
-```
-
-### GitLab CI
-```yaml
-variables:
-  CAST_AI_CLUSTER_ID: "your-cluster-id"
-  CAST_AI_ZONE: "us-east-1a"
-script:
-  - ./rebalance-script.sh --dry-run --verbose
-```
+- **API Key Protection**: Never commit API keys to version control
+- **Environment Variables**: Consider using environment variables for API keys:
+  ```bash
+  export CAST_AI_API_KEY="your-api-key-here"
+  ./rebalance.sh abc123-def456 "$CAST_AI_API_KEY" 5
+  ```
+- **Permissions**: Ensure the API key has only necessary permissions
 
 ## Troubleshooting
 
 ### Common Issues
 
-**API Key Problems:**
+1. **"No nodes found!"**
+   - Verify cluster ID is correct
+   - Check API key permissions
+   - Ensure nodes exist in specified zone (if using zone filter)
+
+2. **"Failed to create plan"**
+   - Check API key validity
+   - Verify cluster is accessible
+   - Ensure cluster has sufficient nodes for rebalancing
+
+3. **Timeout errors**
+   - Increase timeout value for large nodes
+   - Check cluster health and node responsiveness
+   - Monitor Cast.ai dashboard for stuck operations
+
+### Debug Mode
+
+Add debug output by modifying curl commands:
 ```bash
-# Test your API key
-curl -H "X-API-Key: your-key" https://api.cast.ai/v1/kubernetes/external-clusters
+# Change from:
+curl -s -H "X-API-Key: $API_KEY" ...
+
+# To:
+curl -v -H "X-API-Key: $API_KEY" ...
 ```
 
-**Cluster Not Found:**
-```bash
-# List all clusters to verify name/ID
-./rebalance-script.sh --help  # Shows your clusters if API key is valid
-```
+## Limitations
 
-**Permission Issues:**
-```bash
-chmod +x rebalance-script.sh
-```
-
-### Getting Help
-```bash
-./rebalance-script.sh --help
-```
+- Maximum 40-minute timeout per batch
+- Requires jq for JSON processing
+- Linux/Unix environments only
+- Synchronous processing (one batch at a time)
 
 ## Best Practices
 
-1. **Always test first**: Use `--dry-run` before actual execution
-2. **Use cluster ID in CI/CD**: Faster than name lookup
-3. **Set appropriate timeouts**: Larger clusters need more time
-4. **Monitor logs**: Use `--verbose` for troubleshooting
-5. **Secure API keys**: Use environment variables, not command line args
-6. **Start small**: Use smaller batch sizes for initial runs
+1. **Start Small**: Test with small batch sizes (2-3 nodes) initially
+2. **Monitor Resources**: Watch cluster resource utilization during rebalancing
+3. **Off-Peak Hours**: Run during low-traffic periods
+4. **Backup Plans**: Ensure you can manually intervene if needed
+5. **Gradual Rollout**: For large clusters, consider multiple smaller runs
 
-## Example Output
-```
-[INFO] 2024-07-30 10:15:23 - Starting Cast AI Batch Rebalancing Script
-[INFO] 2024-07-30 10:15:23 - Using provided cluster ID: abc123-def456
-[SUCCESS] 2024-07-30 10:15:25 - Found 12 nodes in zone us-east-1a
-[SUCCESS] 2024-07-30 10:15:25 - Created 4 batches
-[INFO] 2024-07-30 10:15:25 - Processing batch 1 of 4
-[SUCCESS] 2024-07-30 10:18:45 - All batches completed successfully!
-```
+## Contributing
+
+To contribute improvements:
+
+1. Test changes thoroughly in non-production environments
+2. Follow bash best practices
+3. Maintain backward compatibility
+4. Update this README with any new features or requirements
+
